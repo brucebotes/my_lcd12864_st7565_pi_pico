@@ -8,7 +8,7 @@
 
 [Adafruit/ST7565-LCD](https://github.com/adafruit/ST7565-LCD)
 
-### Install Vscode extensions for debuggin
+### Install Vscode extensions for debug
 
 Once the install has completed, install the extensions needed to debug a Raspberry Pi Pico:
 
