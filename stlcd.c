@@ -1,0 +1,1478 @@
+/*
+$Id:$
+
+ST7565 LCD library!
+
+Copyright (C) 2010 Limor Fried, Adafruit Industries
+
+This library is free software; you can redistribute it and/or
+modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation; either
+version 2.1 of the License, or (at your option) any later version.
+
+This library is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public
+License along with this library; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+
+ // some of this code was written by <cstone@pobox.com> originally; it is in the
+public domain.
+*/
+
+/*
+Converted by: Bruce Botes - 18 Dec 2023
+
+My very first attempt using the Pi Pico Toolchain with a LCD (128x64) and spi.
+Code adapted for use in the Pi Pico C/C++ development environment.
+The original code is 13 years old - tried and tested.
+Very basic C and easy to convert to the Pi Pico C/C++toolchain.
+
+NOTE the GMG12864 and PiPico are using 3.3v TTL
+Pin mapping
+---------------------------------------------------------------------------------------
+GMG12864                                                <-> PiPico
+---------------------------------------------------------------------------------------
+1 - CS(chip select)                                     <-> GPIO 17 / SPI0 - CSN (pin 22)
+2 - Res(Reset LCD)                                      <-> GPIO 20 (pin 26)
+3 - RS(also AO - comand data instruction)               <-> GPIO 21 (pin 27) - not used (future )
+4 - SCL(also SCK/SCLK - spi clock)                      <-> GPIO 18 / SPI0 - SCK (pin 24)
+5 - SI(also SDA/MOSI                                    <-> GPIO 19 / SPI0 - MOSI/TX (pin 25)
+6 - VDD(3.3V - I guess for the ST7565 onboard chip)     <-> 3.3v (pin 36)
+7 - VSS(GND)                                            <-> GND (pin 38)
+8 - A (Backlight Anode - 3.3V)                          <-> 3.3v (pin 36)
+9 - K (Backlight Cathode - GND)                         <-> GND (pin 38)
+10 to 13 ( SPI for Chinese characterset)                <-> not used
+*/
+#include "stlcd.h"
+#include "glcd.h"
+
+uint8_t is_reversed = 0;
+
+// int pagemap[] = {3, 2, 1, 0, 7, 6, 5, 4};
+int pagemap[] = {7, 6, 5, 4, 3, 2, 1, 0};
+
+uint8_t buffer[128 * 64 / 8] = {
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x3,
+    0x7,
+    0xF,
+    0x1F,
+    0x1F,
+    0x3F,
+    0x3F,
+    0x3F,
+    0x3F,
+    0x7,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x7F,
+    0x3F,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x1F,
+    0x3F,
+    0x70,
+    0x70,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x6,
+    0x6,
+    0x0,
+    0x0,
+    0x0,
+    0x3,
+    0x3,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+
+    0x1F,
+    0x1F,
+    0x1F,
+    0x1F,
+    0x1F,
+    0x1F,
+    0x1F,
+    0x1F,
+    0x1F,
+    0x1F,
+    0x1F,
+    0x1F,
+    0x1F,
+    0xF,
+    0x7,
+    0x7,
+    0x7,
+    0x3F,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFE,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0x3E,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0xF,
+    0x3F,
+    0x70,
+    0x60,
+    0x60,
+    0x60,
+    0x60,
+    0x30,
+    0x7F,
+    0x3F,
+    0x0,
+    0x0,
+    0x1F,
+    0x3F,
+    0x70,
+    0x60,
+    0x60,
+    0x60,
+    0x60,
+    0x39,
+    0xFF,
+    0xFF,
+    0x0,
+    0x6,
+    0x1F,
+    0x39,
+    0x60,
+    0x60,
+    0x60,
+    0x60,
+    0x30,
+    0x3F,
+    0x7F,
+    0x0,
+    0x0,
+    0x60,
+    0xFF,
+    0xFF,
+    0x60,
+    0x60,
+    0x0,
+    0x7F,
+    0x7F,
+    0x70,
+    0x60,
+    0x60,
+    0x40,
+    0x0,
+    0x7F,
+    0x7F,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x7F,
+    0x7F,
+    0x0,
+    0x0,
+    0x0,
+    0x7F,
+    0x7F,
+    0x0,
+    0x0,
+    0x60,
+    0xFF,
+    0xFF,
+    0x60,
+    0x60,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+
+    0x80,
+    0xF8,
+    0xFC,
+    0xFE,
+    0xFE,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xEF,
+    0xE7,
+    0xE7,
+    0xE3,
+    0xF3,
+    0xF9,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xF7,
+    0x7,
+    0x1F,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0x7F,
+    0xFF,
+    0x7F,
+    0x7F,
+    0x7F,
+    0x7F,
+    0x7F,
+    0x7F,
+    0x3F,
+    0x3F,
+    0x1F,
+    0xF,
+    0x7,
+    0x3,
+    0x0,
+    0x0,
+    0x0,
+    0xC0,
+    0xE0,
+    0x60,
+    0x20,
+    0x20,
+    0x60,
+    0xE0,
+    0xE0,
+    0xE0,
+    0x0,
+    0x0,
+    0x80,
+    0xC0,
+    0xE0,
+    0x60,
+    0x20,
+    0x60,
+    0x60,
+    0xE0,
+    0xE0,
+    0xE0,
+    0x0,
+    0x0,
+    0x80,
+    0xC0,
+    0x60,
+    0x60,
+    0x20,
+    0x60,
+    0x60,
+    0xE0,
+    0xE0,
+    0x0,
+    0x0,
+    0x0,
+    0xE0,
+    0xE0,
+    0x0,
+    0x0,
+    0x0,
+    0xE0,
+    0xE0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x80,
+    0xE0,
+    0x60,
+    0x60,
+    0x60,
+    0x60,
+    0xE0,
+    0x80,
+    0x0,
+    0x0,
+    0x0,
+    0xE0,
+    0xE0,
+    0x0,
+    0x0,
+    0x0,
+    0xE0,
+    0xE0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+
+    0x0,
+    0x0,
+    0x0,
+    0x3,
+    0x7,
+    0x1F,
+    0x9F,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFD,
+    0xF1,
+    0xE3,
+    0xE3,
+    0xCF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xF0,
+    0xFC,
+    0x7F,
+    0x3F,
+    0x3F,
+    0x3F,
+    0x3F,
+    0x7F,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFE,
+    0xFC,
+    0xF0,
+    0xE0,
+    0x80,
+    0x0,
+    0x0,
+    0x0,
+    0xC,
+    0x1C,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x7F,
+    0x7F,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x7,
+    0x7,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x1C,
+    0xC,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+
+    0x0,
+    0x7,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFE,
+    0xFE,
+    0xFE,
+    0xFE,
+    0xFC,
+    0xF8,
+    0xF8,
+    0xF0,
+    0xFE,
+    0xFF,
+    0xFF,
+    0xFF,
+    0x7F,
+    0x3F,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0x1F,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0xFF,
+    0xFF,
+    0x0,
+    0x0,
+    0x0,
+    0xFF,
+    0xFF,
+    0xE0,
+    0xC0,
+    0xC0,
+    0xC0,
+    0xFF,
+    0x7F,
+    0x0,
+    0x0,
+    0x1E,
+    0x7F,
+    0xE1,
+    0xC0,
+    0xC0,
+    0xC0,
+    0xC0,
+    0x61,
+    0xFF,
+    0xFF,
+    0x0,
+    0x0,
+    0xFE,
+    0xFF,
+    0x1,
+    0x0,
+    0x0,
+    0x0,
+    0xFF,
+    0xFF,
+    0x0,
+    0x0,
+    0x21,
+    0xF9,
+    0xF8,
+    0xDC,
+    0xCC,
+    0xCF,
+    0x7,
+    0x0,
+    0xC0,
+    0xFF,
+    0xFF,
+    0xC0,
+    0x80,
+    0x0,
+    0xFF,
+    0xFF,
+    0xC0,
+    0xC0,
+    0x80,
+    0x0,
+    0x0,
+    0xFF,
+    0xFF,
+    0x0,
+    0x0,
+    0x1F,
+    0x7F,
+    0xF9,
+    0xC8,
+    0xC8,
+    0xC8,
+    0xC8,
+    0x79,
+    0x39,
+    0x0,
+    0x0,
+    0x71,
+    0xF9,
+    0xD8,
+    0xCC,
+    0xCE,
+    0x47,
+    0x3,
+    0x0,
+
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x80,
+    0x80,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x80,
+    0xC0,
+    0xE0,
+    0xF0,
+    0xF8,
+    0xF8,
+    0xFC,
+    0xFC,
+    0xFC,
+    0xFC,
+    0xF8,
+    0xF0,
+    0xC0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0xC0,
+    0xC0,
+    0x0,
+    0x0,
+    0x0,
+    0xC0,
+    0xC0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0xC0,
+    0xC0,
+    0x0,
+    0x0,
+    0x0,
+    0x80,
+    0xC0,
+    0xC0,
+    0xC0,
+    0xC0,
+    0xC0,
+    0x80,
+    0xC0,
+    0xC0,
+    0x0,
+    0x0,
+    0x0,
+    0x80,
+    0xC0,
+    0xC0,
+    0xC0,
+    0xC0,
+    0xC0,
+    0x80,
+    0x0,
+    0x0,
+    0x80,
+    0xC0,
+    0xC0,
+    0xC0,
+    0xC0,
+    0xC0,
+    0x0,
+    0x0,
+    0x0,
+    0xC0,
+    0xC0,
+    0x0,
+    0x0,
+    0x0,
+    0xC0,
+    0x80,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0xC0,
+    0xC0,
+    0x0,
+    0x0,
+    0x0,
+    0x80,
+    0xC0,
+    0xC0,
+    0xC0,
+    0xC0,
+    0xC0,
+    0x80,
+    0x80,
+    0x0,
+    0x0,
+    0x80,
+    0xC0,
+    0xC0,
+    0xC0,
+    0xC0,
+    0x80,
+    0x0,
+    0x0,
+
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+    0x0,
+
+};
+
+const static unsigned char logo16_glcd_bmp[] = {
+    0x30,
+    0xf0,
+    0xf0,
+    0xf0,
+    0xf0,
+    0x30,
+    0xf8,
+    0xbe,
+    0x9f,
+    0xff,
+    0xf8,
+    0xc0,
+    0xc0,
+    0xc0,
+    0x80,
+    0x00,
+    0x20,
+    0x3c,
+    0x3f,
+    0x3f,
+    0x1f,
+    0x19,
+    0x1f,
+    0x7b,
+    0xfb,
+    0xfe,
+    0xfe,
+    0x07,
+    0x07,
+    0x07,
+    0x03,
+    0x00,
+};
+
+const uint LED_PIN = 15; // Led as indicator
+const uint RST_PIN = 20; // Reset
+const uint AO_PIN = 21;  // Data instruction AO
+const uint BLA_PIN = 22; // Backlight - not used (future )
+
+#ifdef PICO_DEFAULT_SPI_CSN_PIN
+static inline void cs_select()
+{
+  asm volatile("nop \n nop \n nop");
+  gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 0); // Active low
+  asm volatile("nop \n nop \n nop");
+}
+
+static inline void cs_deselect()
+{
+  asm volatile("nop \n nop \n nop");
+  gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 1);
+  asm volatile("nop \n nop \n nop");
+}
+#endif
+
+int main(void)
+{
+
+  stdio_init_all();
+  setup();
+  while (1)
+  {
+    loop();
+  }
+}
+
+void loop(void) {}
+
+void setup(void)
+{
+  enable_Pico_pins();
+
+  printf("init!\n");
+  st7565_init();
+
+  /*
+  while (1) {
+    spiwrite(0x55);
+    sleep_ms(100);
+  }
+  */
+
+  printf("on\n");
+  st7565_command(CMD_DISPLAY_ON);
+  printf("normal\n");
+  st7565_command(CMD_SET_ALLPTS_NORMAL);
+  printf("bright\n");
+  // st7565_set_brightness(0x18); //too bright
+  st7565_set_brightness(0x08);
+  // printf("clear\n");
+  // clear_screen();
+  // printf("blit\n");
+  // write_buffer(buffer);
+  printf("done\n");
+  sleep_ms(250);
+
+  clear_buffer(buffer);
+
+  gpio_put(LED_PIN, 0); // set high
+
+  // drawrect(buffer, 10, 10, 2, 2, 1);
+  // testdrawrect(buffer);
+  //  testfillrect(buffer);
+  //   testdrawline(buffer);
+  // testdrawcircle(buffer);
+  // fillcircle(buffer, 32, 32, 10, 1);
+  // testdrawchar(buffer);
+
+  /*
+  drawstring(buffer, 0, 0, "Lorem ipsum dolor sit amet, consectetur \
+  adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore \
+  magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco \
+  laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in \
+  reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
+  pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa \
+  qui officia deserunt mollit anim id est laborum.");
+  */
+  for (int i = 0; i < 16; i++)
+  {
+    setpixel(buffer, i, i, 1);
+    setpixel(buffer, 127 - i, i, 1);
+    setpixel(buffer, i, 63 - i, 1);
+    setpixel(buffer, 127 - i, 63 - i, 1);
+  }
+  drawrect(buffer, 16, 16, 128 - 32, 64 - 32, 1);
+  drawstring(buffer, 40, 3, "PiPico and");
+  drawstring(buffer, 20, 4, "LCD 12864 - SPI");
+
+  /*
+  for (int i = 0; 1<8; i++){
+   drawstring(buffer, 0, i, "1234567890123456789012");
+  }
+  */
+
+  gpio_put(LED_PIN, 1); // set high
+  write_buffer(buffer);
+
+  sleep_ms(5000);
+
+  // blocking call
+  testdrawbitmap(buffer, logo16_glcd_bmp, 16, 16);
+}
+
+#define NUMFLAKES 10
+#define XPOS 0
+#define YPOS 1
+#define DELTAY 2
+
+void testdrawbitmap(uint8_t *buff, const uint8_t *bitmap, uint8_t w,
+                    uint8_t h)
+{
+  uint8_t icons[NUMFLAKES][3];
+  srandom(buff[666]);
+
+  // initialize
+  for (uint8_t f = 0; f < NUMFLAKES; f++)
+  {
+    icons[f][XPOS] = random() % 128;
+    icons[f][YPOS] = 0;
+    icons[f][DELTAY] = random() % 5 + 1;
+  }
+
+  while (1)
+  {
+    // draw each icon
+    for (uint8_t f = 0; f < NUMFLAKES; f++)
+    {
+      drawbitmap(buffer, icons[f][XPOS], icons[f][YPOS], logo16_glcd_bmp, w, h,
+                 1);
+    }
+    write_buffer(buffer);
+    sleep_ms(200);
+
+    // then erase it + move it
+    for (uint8_t f = 0; f < NUMFLAKES; f++)
+    {
+      drawbitmap(buffer, icons[f][XPOS], icons[f][YPOS], logo16_glcd_bmp, w, h,
+                 0);
+      // move it
+      icons[f][YPOS] += icons[f][DELTAY];
+      // if its gone, reinit
+      if (icons[f][YPOS] > 64)
+      {
+        icons[f][XPOS] = random() % 128;
+        icons[f][YPOS] = 0;
+        icons[f][DELTAY] = random() % 5 + 1;
+      }
+    }
+  }
+}
+
+void enable_Pico_pins(void)
+{
+  // Backloght
+  gpio_init(BLA_PIN);
+  gpio_set_dir(BLA_PIN, GPIO_OUT);
+
+  // Led
+  gpio_init(LED_PIN);
+  gpio_set_dir(LED_PIN, GPIO_OUT);
+
+  // Hard reset pin on 12864 LCD
+  gpio_init(RST_PIN);
+  gpio_set_dir(RST_PIN, GPIO_OUT);
+
+  // Data instruction on 12864 (switch between command or data mode)
+  gpio_init(AO_PIN);
+  gpio_set_dir(AO_PIN, GPIO_OUT);
+
+  // This example will use SPI0 at 0.5MHz.
+  spi_init(spi_default, 500 * 1000);
+  gpio_set_function(PICO_DEFAULT_SPI_RX_PIN, GPIO_FUNC_SPI);
+  gpio_set_function(PICO_DEFAULT_SPI_SCK_PIN, GPIO_FUNC_SPI);
+  gpio_set_function(PICO_DEFAULT_SPI_TX_PIN, GPIO_FUNC_SPI);
+
+  // Chip select is active-low, so we'll initialise it to a driven-high state
+  gpio_init(PICO_DEFAULT_SPI_CSN_PIN);
+  gpio_set_dir(PICO_DEFAULT_SPI_CSN_PIN, GPIO_OUT);
+  gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 1);
+}
+
+void testdrawchar(uint8_t *buff)
+{
+  for (uint8_t i = 0; i < 168; i++)
+  {
+    drawchar(buffer, (i % 21) * 6, i / 21, i);
+  }
+}
+
+void testdrawcircle(uint8_t *buff)
+{
+  for (uint8_t i = 0; i < 64; i += 2)
+  {
+    drawcircle(buffer, 63, 31, i, 1);
+  }
+}
+
+void testdrawline(uint8_t *buff)
+{
+  for (uint8_t i = 0; i < 128; i += 4)
+  {
+    drawline(buffer, 0, 0, i, 63, 1);
+  }
+  for (uint8_t i = 0; i < 64; i += 4)
+  {
+    drawline(buffer, 0, 0, 127, i, 1);
+  }
+
+  write_buffer(buffer);
+  //_delay_ms(1000);
+  sleep_ms(1000);
+
+  for (uint8_t i = 0; i < 128; i += 4)
+  {
+    drawline(buffer, i, 63, 0, 0, 0);
+  }
+  for (uint8_t i = 0; i < 64; i += 4)
+  {
+    drawline(buffer, 127, i, 0, 0, 0);
+  }
+}
+
+void testdrawrect(uint8_t *buff)
+{
+  for (uint8_t i = 0; i < 64; i += 2)
+  {
+    drawrect(buff, i, i, 128 - i, 64 - i, 1);
+  }
+}
+
+void testfillrect(uint8_t *buff)
+{
+  for (uint8_t i = 0; i < 64; i++)
+  {
+    fillrect(buff, i, i, 128 - i, 64 - i, i % 2);
+  }
+}
+
+void clear_screen(void)
+{
+  uint8_t p, c;
+
+  for (p = 0; p < 8; p++)
+  {
+    st7565_command(CMD_SET_PAGE | p);
+    for (c = 0; c < 128; c++)
+    {
+      st7565_command(CMD_SET_COLUMN_LOWER | (c & 0xf));
+      st7565_command(CMD_SET_COLUMN_UPPER | ((c >> 4) & 0xf));
+      st7565_data(0x0);
+    }
+  }
+}
+
+void st7565_init(void)
+{
+  // enable Black light
+  // gpio_put(BLA_PIN, 1); future
+
+  // toggle RST low to reset; CS low so it'll listen to us
+  cs_select();
+  gpio_put(RST_PIN, 0); // set low
+  sleep_ms(500);
+  gpio_put(RST_PIN, 1); // set high
+
+  // LCD bias select
+  st7565_command(CMD_SET_BIAS_7);
+  // ADC select
+  st7565_command(CMD_SET_ADC_NORMAL);
+  // SHL select
+  st7565_command(CMD_SET_COM_NORMAL);
+  // Initial display line
+  st7565_command(CMD_SET_DISP_START_LINE);
+  // Set reverse display
+  // st7565_command(CMD_SET_DISP_REVERSE);
+
+  // turn on voltage converter (VC=1, VR=0, VF=0)
+  st7565_command(CMD_SET_POWER_CONTROL | 0x4);
+  // wait for 50% rising
+  sleep_ms(50);
+
+  // turn on voltage regulator (VC=1, VR=1, VF=0)
+  st7565_command(CMD_SET_POWER_CONTROL | 0x6);
+  // wait >=50ms
+  sleep_ms(50);
+
+  // turn on voltage follower (VC=1, VR=1, VF=1)
+  st7565_command(CMD_SET_POWER_CONTROL | 0x7);
+  // wait
+  sleep_ms(50);
+
+  // set lcd operating voltage (regulator resistor, ref voltage resistor)
+  st7565_command(CMD_SET_RESISTOR_RATIO | 0x6);
+
+  // initial display line
+  // set page address
+  // set column address
+  // write display data
+}
+
+inline void spiwrite(uint8_t c)
+{
+  cs_select();
+  spi_write_blocking(spi_default, &c, 1);
+  cs_deselect();
+}
+
+// write a command to the ST7565 SPI controller
+void st7565_command(uint8_t c)
+{
+  gpio_put(AO_PIN, 0); // set low for command
+
+  spiwrite(c);
+}
+
+// write display data to the ST7565 SPI controller
+void st7565_data(uint8_t c)
+{
+  gpio_put(AO_PIN, 1); // set high for data
+
+  spiwrite(c);
+}
+void st7565_set_brightness(uint8_t val)
+{
+  st7565_command(CMD_SET_VOLUME_FIRST);
+  st7565_command(CMD_SET_VOLUME_SECOND | (val & 0x3f));
+}
+
+void write_buffer(uint8_t *buffer)
+{
+  uint8_t c, p;
+
+  for (p = 0; p < 8; p++)
+  {
+    st7565_command(CMD_SET_PAGE | pagemap[p]);
+    st7565_command(CMD_SET_COLUMN_LOWER | (0x0 & 0xf));
+    st7565_command(CMD_SET_COLUMN_UPPER | ((0x0 >> 4) & 0xf));
+    st7565_command(CMD_RMW); // not sure if this is really necessary??
+
+    for (c = 0; c < 128; c++)
+    {
+      st7565_data(buffer[(128 * p) + c]);
+    }
+  }
+}

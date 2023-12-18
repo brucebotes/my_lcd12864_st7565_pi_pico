@@ -1,0 +1,3 @@
+/Users/brucebotes/projects/pipico/lcd_12864_st7565_spi/build/pioasm/CMakeFiles/pioasm.dir
+/Users/brucebotes/projects/pipico/lcd_12864_st7565_spi/build/pioasm/CMakeFiles/edit_cache.dir
+/Users/brucebotes/projects/pipico/lcd_12864_st7565_spi/build/pioasm/CMakeFiles/rebuild_cache.dir
